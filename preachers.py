@@ -1,6 +1,5 @@
 import bpy
 import re
-import os
 
 bl_info = {
     "name": "Preachers",
@@ -20,6 +19,7 @@ from bpy.props import (
     FloatProperty,
     PointerProperty,
     EnumProperty,
+    BoolProperty,
 )
 
 # 数字を含め自然にソートする
@@ -46,6 +46,30 @@ class PR_props_group(bpy.types.PropertyGroup):
         min = 0.0,
     ) # type: ignore
 
+    image_size: EnumProperty(
+        name = "image size",
+        description = "image size",
+        items = [
+            ("1k", "1K(1024x1024)", ""),
+            ("2k", "2K(2048x2048)", ""),
+            ("4k", "4K(4096x4096)", ""),
+        ]
+    ) # type: ignore
+
+    rotate_parts: BoolProperty(
+        name = "rotate parts",
+        description = "Rotate Parts",
+        default = False,
+    ) # type: ignore
+
+    pack_margin: FloatProperty(
+        name = "pack margin",
+        description = "pack margin",
+        default = 0.02,
+        min = 0.0,
+    ) # type: ignore
+
+
 # Preachers用メニューパネル
 class PR_PT_Panel(bpy.types.Panel):
     bl_label = "Preachers"
@@ -62,6 +86,9 @@ class PR_PT_Panel(bpy.types.Panel):
         layout.prop(context.scene.pr_props, "layer_offset")
         layout.operator("object.order_layer", text="Order Layer")
         layout.operator("object.rename_layer", text="Rename Layer")
+        layout.prop(context.scene.pr_props, "image_size")
+        layout.prop(context.scene.pr_props, "rotate_parts")
+        layout.prop(context.scene.pr_props, "pack_margin")
         layout.operator("object.uv_square", text="Square UV Pack")
         layout.operator("object.bake_texture", text="Bake Texture")
         layout.operator("object.make_integrated_material", text="Set Material")
@@ -129,6 +156,24 @@ class PR_OT_UV_Square(bpy.types.Operator):
     bl_description = "Add UVMap to selected object and expand square UV."
 
     def execute(self, context):
+        # UV展開・ベイクする用の画像を作成
+        tex_name = "tex_bake"
+        sizes = {"1k": 1024, "2k": 2048, "4k": 4096}
+        size = sizes[context.scene.pr_props.image_size]
+        image = bpy.data.images.new(name=tex_name, width=size, height=size, alpha=True)
+        pixels = [0.0] * size * size * 4
+        image.pixels = pixels
+
+        # UVエディタの画面を取得
+        for area in bpy.context.screen.areas:
+            if area.type == 'IMAGE_EDITOR':
+                for space in area.spaces:
+                    if space.type == 'IMAGE_EDITOR':
+                        # UVエディタに画像を設定
+                        space.image = image
+                        break
+
+
         layer_name = "UVMap.square"
         # 選択中のオブジェクトを取得
         selected_objects = context.selected_objects
@@ -142,15 +187,17 @@ class PR_OT_UV_Square(bpy.types.Operator):
             if not layer_name in obj.data.uv_layers:
                 obj.data.uv_layers.new(name=layer_name)
             obj.data.uv_layers.active = obj.data.uv_layers[layer_name]
+            # 選択状態を解除
             obj.select_set(False)
         
         # UV展開する
         for obj in selected_objects:
             obj.select_set(True)
         bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.uv.select_all()
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.uv.select_all(action='SELECT')
         bpy.ops.uv.cube_project(correct_aspect=False, cube_size=1,)
-        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.uv.pack_islands(margin=context.scene.pr_props.pack_margin, rotate=context.scene.pr_props.rotate_parts)
 
         return {'FINISHED'}
 
@@ -161,10 +208,7 @@ class PR_OT_Bake_Texture(bpy.types.Operator):
     bl_description = "Bake Texture."
     
     def execute(self, context):
-        tex_name = "tex_characte"
-        tex_path = bpy.path.abspath("//" + tex_name)
-        if not os.path.exists(tex_path):
-            tex = bpy.data.images.new(tex_name, width=1024, height=1024, alpha=True)
+        tex_name = "tex_bake"
 
         # マテリアルにテクスチャノードを作成
         selected_objects = bpy.context.selected_objects
@@ -181,13 +225,20 @@ class PR_OT_Bake_Texture(bpy.types.Operator):
         
         # ベイク設定
         bpy.context.scene.render.engine = 'CYCLES'
-        bpy.context.scene.render.bake_margin = 4
+        bpy.context.scene.render.bake_margin = 0
         bpy.context.scene.render.use_bake_multires = False
+        bpy.context.scene.render.bake.use_pass_direct = False
+        bpy.context.scene.render.bake.use_pass_indirect = False
         bpy.ops.object.bake(type='DIFFUSE')
 
-        # 画像を保存する
-        output_path = bpy.path.abspath("//tex_character.png")
-        bpy.data.images['tex_character'].save_render(output_path)
+        # 画像を保存し、blenderにロードする
+        image = bpy.data.images[tex_name]
+        bpy.context.scene.render.image_settings.color_depth = '16'
+        bpy.context.scene.render.image_settings.compression = 0
+        bpy.context.scene.render.image_settings.linear_colorspace_settings.name = 'sRGB'
+        output_path = bpy.path.abspath("//tex_material.png")
+        bpy.data.images[tex_name].save_render(output_path, scene=None, )
+        bpy.data.images.load(output_path)
 
         return {'FINISHED'}
 
@@ -205,6 +256,7 @@ class PR_OT_Make_Integrated_Material(bpy.types.Operator):
         if not character_material:
             character_material = bpy.data.materials.new(name=material_name)
         character_material.use_nodes = True
+        character_material.blend_method = 'BLEND'
         tree = character_material.node_tree
         bsdf_node = None
         tex_node = None
@@ -215,26 +267,51 @@ class PR_OT_Make_Integrated_Material(bpy.types.Operator):
                 tex_node = node
         if tex_node is None:
             tex_node = tree.nodes.new('ShaderNodeTexImage')
-            tex_name = "tex_character.png"
+            tex_name = "tex_material.png"
             tex = bpy.data.images.get(tex_name)
             tex_node.image = tex
             tree.links.new(tex_node.outputs['Color'], bsdf_node.inputs['Base Color'])
+            tree.links.new(tex_node.outputs['Alpha'], bsdf_node.inputs['Alpha'])
         
         # 選択中のオブジェクトに対してマテリアルをセットする
         selected_objects = context.selected_objects
         for obj in selected_objects:
-            # オブジェクトのマテリアルを取得
             obj_materials = [slot.material for slot in obj.material_slots]
             if character_material not in obj_materials:
-                # characterマテリアルを設定する
                 obj.data.materials.clear()
                 obj.data.materials.append(character_material)
             # 既存のUVマップを削除する
+            uv_name_layer_map = {}
             for uv_layer in obj.data.uv_layers:
-                if uv_layer.name != "UVMap.square":
-                    obj.data.uv_layers.remove(uv_layer)
+                uv_name_layer_map[uv_layer.name] = uv_layer
+            for name in uv_name_layer_map.keys():
+                print(name)
+                if name != "UVMap.square":
+                    print("↑消す")
+                    obj.data.uv_layers.remove(uv_name_layer_map[name])
         
         return {'FINISHED'}
+
+
+# # レイヤーを統合する
+# class PR_OT_Integrate_Objects(bpy.types.Operator):
+#     # 選択されたオブジェクトを統合する
+#     bpy.ops.object.join()
+
+#     # 統合されたオブジェクトを取得する
+#     joined_object = bpy.context.object
+
+#     # 統合された前のオブジェクトのレイヤーの表示順を保存する
+#     original_layers_order = []
+#     for obj in bpy.context.selected_objects:
+#         original_layers_order.append(obj.layers[:])
+
+#     # 統合されたオブジェクトにレイヤーの表示順を適用する
+#     for i, layer in enumerate(original_layers_order[0]):
+#         joined_object.layers[i] = layer
+
+#     print("オブジェクトの統合が完了しました。")
+
 
 classes = (
     PR_PT_Panel,
@@ -244,6 +321,7 @@ classes = (
     PR_OT_UV_Square,
     PR_OT_Bake_Texture,
     PR_OT_Make_Integrated_Material,
+    # PR_OT_Integrate_Objects,
 )
 
 
