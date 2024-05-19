@@ -92,6 +92,8 @@ class PR_PT_Panel(bpy.types.Panel):
         layout.operator("object.uv_square", text="Square UV Pack")
         layout.operator("object.bake_texture", text="Bake Texture")
         layout.operator("object.make_integrated_material", text="Set Material")
+        layout.operator("object.create_vertex_group", text="Create Vertex Group")
+        layout.operator("object.integrate_objects", text="Integrate Objects")
 
 
 # ワイヤーフレーム表示/非表示を切り替える
@@ -293,24 +295,66 @@ class PR_OT_Make_Integrated_Material(bpy.types.Operator):
         return {'FINISHED'}
 
 
-# # レイヤーを統合する
-# class PR_OT_Integrate_Objects(bpy.types.Operator):
-#     # 選択されたオブジェクトを統合する
-#     bpy.ops.object.join()
+# 頂点グループを作成する
+class PR_OT_Create_Vertex_Group(bpy.types.Operator):
+    bl_idname = "object.create_vertex_group"
+    bl_label = "Create Vertex Group"
+    bl_description = "Create vertex group by each selected object layers."
 
-#     # 統合されたオブジェクトを取得する
-#     joined_object = bpy.context.object
+    def execute(self, context):
+        selected_objects = context.selected_objects
+        for obj in selected_objects:
+            if obj.type == 'MESH':
+                vertex_group = obj.vertex_groups.new(name=obj.name)
+                vertex_indices = [v.index for v in obj.data.vertices]
+                vertex_group.add(vertex_indices, 1.0, 'ADD')
+        return {'FINISHED'}
 
-#     # 統合された前のオブジェクトのレイヤーの表示順を保存する
-#     original_layers_order = []
-#     for obj in bpy.context.selected_objects:
-#         original_layers_order.append(obj.layers[:])
 
-#     # 統合されたオブジェクトにレイヤーの表示順を適用する
-#     for i, layer in enumerate(original_layers_order[0]):
-#         joined_object.layers[i] = layer
+# レイヤーを統合する
+class PR_OT_Integrate_Objects(bpy.types.Operator):
+    bl_idname = "object.integrate_objects"
+    bl_label = "Integrate Objects"
+    bl_description = "Integrate Objects"
 
-#     print("オブジェクトの統合が完了しました。")
+    def execute(self, context):
+        # 半透明のオブジェクトの重なりを処理するため、上のレイヤーのオブジェクトから結合していく必要がある
+        selected_objects = context.selected_objects
+        sorted_objects = sorted(selected_objects, key=_natural_sort_key)
+        sorted_objects.reverse()
+        
+        for obj in sorted_objects:
+            # いったんすべて選択を解除する
+            obj.select_set(False)
+        for i in range(len(sorted_objects) - 1):
+            base_obj = sorted_objects[i]
+            active_obj = sorted_objects[i + 1]
+            base_obj.select_set(True)
+            bpy.context.view_layer.objects.active = active_obj
+            active_obj.select_set(True)
+            print(base_obj.name)
+            print(active_obj.name)
+            bpy.ops.object.join()
+            print("joined")
+        
+
+        return {'FINISHED'}
+        # # 選択されたオブジェクトを統合する
+        # bpy.ops.object.join()
+
+        # # 統合されたオブジェクトを取得する
+        # joined_object = bpy.context.object
+
+        # # 統合された前のオブジェクトのレイヤーの表示順を保存する
+        # original_layers_order = []
+        # for obj in bpy.context.selected_objects:
+        #     original_layers_order.append(obj.layers[:])
+
+        # # 統合されたオブジェクトにレイヤーの表示順を適用する
+        # for i, layer in enumerate(original_layers_order[0]):
+        #     joined_object.layers[i] = layer
+
+        # print("オブジェクトの統合が完了しました。")
 
 
 classes = (
@@ -321,7 +365,8 @@ classes = (
     PR_OT_UV_Square,
     PR_OT_Bake_Texture,
     PR_OT_Make_Integrated_Material,
-    # PR_OT_Integrate_Objects,
+    PR_OT_Integrate_Objects,
+    PR_OT_Create_Vertex_Group,
 )
 
 
