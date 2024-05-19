@@ -2,14 +2,14 @@ import bpy
 import re
 
 bl_info = {
-    "name": "Preachers",
+    "name": "Illust To Plane Object",
     "author": "kiku",
     "version": (2, 0),
     "blender": (3, 3, 0),
-    "location": "3D view > right toolbar > Preachers",
-    "description": "Preachers",
+    "location": "3D view > right toolbar > Illust To Plane Object",
+    "description": "A set of useful functions for converting illustrations into 3D objects.",
     "warning": "",
-    "support": "TESTING",
+    "support": "COMMUNITY",
     "wiki_url": "",
     "tracker_url": "",
     "category": "Object"
@@ -38,10 +38,10 @@ def _convert_string(input_str, x):
 
 
 # 変数を定義する
-class PR_props_group(bpy.types.PropertyGroup):
+class ITPO_props_group(bpy.types.PropertyGroup):
     layer_offset: FloatProperty(
         name = "layer offset",
-        description = "offset between each layers",
+        description = "offset between each object layers",
         default = 0.01,
         min = 0.0,
     ) # type: ignore
@@ -58,25 +58,25 @@ class PR_props_group(bpy.types.PropertyGroup):
 
     rotate_parts: BoolProperty(
         name = "rotate parts",
-        description = "Rotate Parts",
+        description = "Whether to rotate the part when expanding UVs.",
         default = False,
     ) # type: ignore
 
     pack_margin: FloatProperty(
         name = "pack margin",
-        description = "pack margin",
+        description = "Margins per object when expanding UVs.",
         default = 0.02,
         min = 0.0,
     ) # type: ignore
 
 
-# Preachers用メニューパネル
-class PR_PT_Panel(bpy.types.Panel):
-    bl_label = "Preachers"
+# Addon用メニューパネル
+class ITPO_PT_Panel(bpy.types.Panel):
+    bl_label = "Illust To Plane Object"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Tool"
-    bl_context = "objectmode" # only in object mode
+    bl_context = "objectmode"
 
     def draw(self, context):
         layout = self.layout
@@ -97,7 +97,7 @@ class PR_PT_Panel(bpy.types.Panel):
 
 
 # ワイヤーフレーム表示/非表示を切り替える
-class PR_OT_ToggleWireframe(bpy.types.Operator):
+class ITPO_OT_ToggleWireframe(bpy.types.Operator):
     bl_idname = "object.toggle_wire"
     bl_label = "Toggle Wireframe"
     bl_description = "Turns the wireframe display of selected objects on and off."
@@ -118,7 +118,7 @@ class PR_OT_ToggleWireframe(bpy.types.Operator):
 
 
 # 選択したオブジェクトを上から順に位置を調整する
-class PR_OT_OrderLayer(bpy.types.Operator):
+class ITPO_OT_OrderLayer(bpy.types.Operator):
     bl_idname = "object.order_layer"
     bl_label = "Order Layer"
     bl_description = "Place the selected object by shifting it by an offset."
@@ -135,7 +135,7 @@ class PR_OT_OrderLayer(bpy.types.Operator):
 
 
 # 選択したオブジェクトを、1から順にプレフィックスをつけてリネームする
-class PR_OT_RenameLayer(bpy.types.Operator):
+class ITPO_OT_RenameLayer(bpy.types.Operator):
     bl_idname = "object.rename_layer"
     bl_label = "Rename Layer"
     bl_description = "Rename selected objects with a numeric prefix."
@@ -152,7 +152,7 @@ class PR_OT_RenameLayer(bpy.types.Operator):
 
 
 # 選択したオブジェクトを、正方形でUV展開し直す
-class PR_OT_UV_Square(bpy.types.Operator):
+class ITPO_OT_UV_Square(bpy.types.Operator):
     bl_idname = "object.uv_square"
     bl_label = "Square UV Pack"
     bl_description = "Add UVMap to selected object and expand square UV."
@@ -204,10 +204,10 @@ class PR_OT_UV_Square(bpy.types.Operator):
         return {'FINISHED'}
 
 # 選択したオブジェクトのテクスチャを、1つのテクスチャにベイクする
-class PR_OT_Bake_Texture(bpy.types.Operator):
+class ITPO_OT_Bake_Texture(bpy.types.Operator):
     bl_idname = "object.bake_texture"
-    bl_label = "Bake Texture"
-    bl_description = "Bake Texture."
+    bl_label = "Bakes the textures of selected objects into a single texture."
+    bl_description = ""
     
     def execute(self, context):
         tex_name = "tex_bake"
@@ -246,7 +246,7 @@ class PR_OT_Bake_Texture(bpy.types.Operator):
 
 
 # 選択したオブジェクトに、ベイクしたテクスチャによるマテリアルを適用する
-class PR_OT_Make_Integrated_Material(bpy.types.Operator):
+class ITPO_OT_Make_Integrated_Material(bpy.types.Operator):
     bl_idname = "object.make_integrated_material"
     bl_label = "Set material"
     bl_description = "Apply a material with a baked texture to selected objects."
@@ -296,7 +296,7 @@ class PR_OT_Make_Integrated_Material(bpy.types.Operator):
 
 
 # 頂点グループを作成する
-class PR_OT_Create_Vertex_Group(bpy.types.Operator):
+class ITPO_OT_Create_Vertex_Group(bpy.types.Operator):
     bl_idname = "object.create_vertex_group"
     bl_label = "Create Vertex Group"
     bl_description = "Create vertex group by each selected object layers."
@@ -311,11 +311,11 @@ class PR_OT_Create_Vertex_Group(bpy.types.Operator):
         return {'FINISHED'}
 
 
-# レイヤーを統合する
-class PR_OT_Integrate_Objects(bpy.types.Operator):
+# オブジェクトを統合する
+class ITPO_OT_Integrate_Objects(bpy.types.Operator):
     bl_idname = "object.integrate_objects"
     bl_label = "Integrate Objects"
-    bl_description = "Integrate Objects"
+    bl_description = "Combine objects into a single object."
 
     def execute(self, context):
         # 半透明のオブジェクトの重なりを処理するため、上のレイヤーのオブジェクトから結合していく必要がある
@@ -337,47 +337,30 @@ class PR_OT_Integrate_Objects(bpy.types.Operator):
             bpy.ops.object.join()
             print("joined")
         
-
         return {'FINISHED'}
-        # # 選択されたオブジェクトを統合する
-        # bpy.ops.object.join()
-
-        # # 統合されたオブジェクトを取得する
-        # joined_object = bpy.context.object
-
-        # # 統合された前のオブジェクトのレイヤーの表示順を保存する
-        # original_layers_order = []
-        # for obj in bpy.context.selected_objects:
-        #     original_layers_order.append(obj.layers[:])
-
-        # # 統合されたオブジェクトにレイヤーの表示順を適用する
-        # for i, layer in enumerate(original_layers_order[0]):
-        #     joined_object.layers[i] = layer
-
-        # print("オブジェクトの統合が完了しました。")
 
 
 classes = (
-    PR_PT_Panel,
-    PR_OT_ToggleWireframe,
-    PR_OT_OrderLayer,
-    PR_OT_RenameLayer,
-    PR_OT_UV_Square,
-    PR_OT_Bake_Texture,
-    PR_OT_Make_Integrated_Material,
-    PR_OT_Integrate_Objects,
-    PR_OT_Create_Vertex_Group,
+    ITPO_PT_Panel,
+    ITPO_OT_ToggleWireframe,
+    ITPO_OT_OrderLayer,
+    ITPO_OT_RenameLayer,
+    ITPO_OT_UV_Square,
+    ITPO_OT_Bake_Texture,
+    ITPO_OT_Make_Integrated_Material,
+    ITPO_OT_Integrate_Objects,
+    ITPO_OT_Create_Vertex_Group,
 )
 
 
 def register():
-    bpy.utils.register_class(PR_props_group)
-    bpy.types.Scene.pr_props = PointerProperty(type = PR_props_group)
+    bpy.utils.register_class(ITPO_props_group)
+    bpy.types.Scene.pr_props = PointerProperty(type = ITPO_props_group)
     for cls in classes:
         bpy.utils.register_class(cls)
 
 def unregister():
-    bpy.utils.unregister_class(PR_props_group)
+    bpy.utils.unregister_class(ITPO_props_group)
     for cls in classes:
         bpy.utils.unregister_class(cls)
 
